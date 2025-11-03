@@ -1,0 +1,7 @@
+# Environments and caches
+__pycache__/
+.venv/
+venv/
+.env
+.vscode/
+.ipynb_checkpoints/
