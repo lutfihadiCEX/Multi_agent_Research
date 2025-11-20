@@ -62,7 +62,7 @@ with st.sidebar:
     # Model selection
     model = st.selectbox(
         "Select LLM Model",
-        ["llama3.2", "mistral", "phi3"],
+        ["llama3.2", "mistral", "phi3", "gemma2:9b"],
         help="Choose which Ollama model to use"
     )
     
