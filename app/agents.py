@@ -55,23 +55,20 @@ class ResearchAgents:
         try:
             # Search web
             logger.info("Searching web...")
-            web_hits = self.tools.search_web(state.research_query, max_results=5)
+            web_hits = self.tools.search_web(state.research_query, max_results=10)
             
             # Search Wikipedia
             logger.info("Searching Wikipedia...")
             wiki_hits = self.tools.search_wikipedia(state.research_query, max_results=3)
+
+            if not web_hits and not wiki_hits:
+                logger.error("No search results found")
+                state.error_message = "Search failed - no results found"
+                state.execution_status = "error"
+                return state
             
             # Convert to ResearchSource objects
             sources = []
-            
-            for result in web_hits:
-                source = ResearchSource(
-                    title=result.get("title", ""),
-                    content=result.get("summary", ""),
-                    url=result.get("link", ""),
-                    source_type="web"
-                )
-                sources.append(source)
             
             for result in wiki_hits:
                 source = ResearchSource(
@@ -83,11 +80,28 @@ class ResearchAgents:
                 )
                 sources.append(source)
             
+            for result in web_hits[:7]:  
+                source = ResearchSource(
+                    title=result.get("title", ""),
+                    content=result.get("summary", ""),
+                    url=result.get("link", ""),
+                    source_type="web",
+                    reliability_score=0.6
+                )
+                sources.append(source)
+
+
+            if not sources:
+                logger.error("No valid sources after filtering")
+                state.error_message = "All search results were filtered as irrelevant"
+                state.execution_status = "error"
+                return state
+            
             state.raw_research = sources
             state.add_to_history(
                 "researcher",
                 "search",
-                f"Found {len(sources)} sources ({len(web_hits)} web, {len(wiki_hits)} Wikipedia)"
+                f"Found {len(sources)} sources ({len(wiki_hits)} Wikipedia, {len(web_hits)} web)"
             )
             
             logger.info(f"Researcher found {len(sources)} sources")
@@ -120,29 +134,51 @@ class ResearchAgents:
                 return state
             
             findings = []
+
+            verification_prompt = PromptTemplate(
+                input_variables=["query", "title", "content"],
+                template="""Is this source relevant to the query? Answer ONLY 'YES' or 'NO'.
+
+Query: {query}
+Source Title: {title}
+Content Preview: {content}
+
+Relevant (YES/NO)?"""
+            )
             
             for source in state.raw_research:
-                # Create a summary prompt
+                verify = verification_prompt.format(
+                    query=state.research_query,
+                    title=source.title,
+                    content=source.content[:300]
+                )
+                
+                relevance = self.llm.invoke(verify).strip().upper()
+                
+                if "NO" in relevance:
+                    logger.warning(f"Filtering irrelevant source: {source.title}")
+                    continue
+                
+                
                 summary_prompt = PromptTemplate(
                     input_variables=["content", "topic"],
                     template="""Analyze this research content and extract 2-3 key findings.
-                    
+
 Topic: {topic}
 Content: {content}
 
-Extract key findings as a concise bullet-point summary:"""   # Shortened because still template experimenting
+Extract key findings as a concise bullet-point summary:"""
                 )
                 
-                # Generate analysis
+                
                 prompt = summary_prompt.format(
                     topic=state.research_query,
-                    content=source.content[:500]  # Experimented with limiting content to 500 chars because longer input caused LLM timeouts
-
+                    content=source.content[:500]  # Limit content
                 )
                 
                 analysis = self.llm.invoke(prompt)
                 
-                # Create finding
+                
                 finding = ResearchFinding(
                     topic=state.research_query,
                     finding=analysis,
@@ -152,18 +188,24 @@ Extract key findings as a concise bullet-point summary:"""   # Shortened because
                 
                 findings.append(finding)
             
+            if not findings:
+                logger.error("No relevant findings after filtering")
+                state.error_message = "All sources were deemed irrelevant to the query"
+                state.execution_status = "error"
+                return state
+            
             state.analyzed_findings = findings
             state.add_to_history(
                 "analyzer",
                 "analyze",
-                f"Analyzed {len(findings)} sources and extracted findings"
+                f"Analyzed {len(findings)} relevant sources and extracted findings"
             )
             
-            logger.info(f"Analyzer extracted {len(findings)} findings")
+            logger.info(f"Analyzer extracted {len(findings)} findings from relevant sources")
             
         except Exception as e:
-            logger.error(f"[Analyzer] Hit an error while summarizing source: {e}")
-            state.error_message = f"Error in analyzer agent: {e}"  # Consider fallback or partial processing
+            logger.error(f"Analyzer error: {str(e)}")
+            state.error_message = f"Analyzer error: {str(e)}"
             state.execution_status = "error"
         
         return state
