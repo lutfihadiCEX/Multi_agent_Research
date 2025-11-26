@@ -30,17 +30,36 @@ class ResearchTools:
         logger.info(f"Looking up '{query}' on the web... fingers crossed!")
         try:
             ddgs = DDGS()
-            results = ddgs.text(query, max_results=max_results)
+            results = list(ddgs.text(query, max_results=max_results))
+
+            if not results:
+                logger.warning("No web results found")
+                return []
             
             formatted_results = []
             for result in results:
+                title = result.get("title", "")
+                body = result.get("body", "")
+                link = result.get("href", "")
+
+                if len(body) < 50:  # Skip very short results
+                    continue
+
+
+                if "windows" in title.lower() and "windows" not in query.lower():
+                    logger.warning(f"Filtering potentially irrelevant result: {title}")
+                    continue
+
+
                 formatted_results.append({
-                    "title": result.get("title", ""),
-                    "summary": result.get("body", "")[:500],  # Limit to 500 chars
-                    "link": result.get("href", "")
+                    "title": title,
+                    "summary": body[:500],  # Limit to 500 chars
+                    "link": link
                 })
+
             
-            logger.info(f"Web search done! Got {len(formatted_results)} results. Not bad!")
+            
+            logger.info(f"Found {len(formatted_results)} relevant web results")
             return formatted_results
             
         except Exception as e:
