@@ -190,7 +190,26 @@ if st.session_state.research_state:
     
     with tab2:
         st.header("Raw Research Sources")
+
+        # For debugging
+        if state.error_message:
+            st.error(f"⚠️ Error: {state.error_message}")
+
         if state.raw_research:
+            st.success(f"✅ Found {len(state.raw_research)} sources")
+
+
+        # Listing source for checking
+            col1, col2 = st.columns(2)
+            with col1:
+                wiki_count = len([s for s in state.raw_research if s.source_type == "wikipedia"])
+                st.metric("Wikipedia Sources", wiki_count)
+            with col2:
+                web_count = len([s for s in state.raw_research if s.source_type == "web"])
+                st.metric("Web Sources", web_count)
+            
+            st.divider()
+
             for i, source in enumerate(state.raw_research, 1):
                 with st.expander(f"Source {i}: {source.title[:80]}..."):
                     st.markdown(f"**Title:** {source.title}")
@@ -200,7 +219,7 @@ if st.session_state.research_state:
                     st.markdown("---")
                     st.markdown(source.content)
         else:
-            st.info("No sources retrieved")
+            st.warning("⚠️ No sources retrieved - search may have failed")
     
     with tab3:
         st.header("Analyzed Findings")
